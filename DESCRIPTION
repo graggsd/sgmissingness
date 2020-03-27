@@ -1,0 +1,13 @@
+Package: sgmissingness
+Type: Package
+Title: Tests for Missingness in Data
+Version: 0.1.0
+Author: Stephen Gragg
+Maintainer: Stephen Gragg <graggsd@gmail.com>
+Description: Tests for Missingness in Data
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Suggests: 
+    testthat (>= 2.1.0)
+RoxygenNote: 7.0.2
