@@ -1,60 +1,35 @@
 
-# Make logical index of missing values
-mk_missing_idx <- function(x, missing_vals = NULL) {
-    x <- as.character(x)
-    na_idx <- is.na(x)
-    if (is.null(missing_vals)) {
-        missing_idx <- na_idx
-    } else {
-        missing_vals <- as.character(missing_vals)
-        missing_idx <- na_idx | (x %in% missing_vals)
-    }
-    return(missing_idx)
-}
-
 # Calc total, number missing, and percent missing
-n_perc_missing <- function(missing_idx) {
+n_perc_missing <- function(x) {
+    missing_idx <- is.na(x)
     # Calc total, number missing, and percent missing
     n_total <- length(missing_idx)
     n_missing <- sum(missing_idx)
     perc_missing <- n_missing / n_total * 100
-    out <- list(n_total = n_total,
-                n_missing = n_missing,
-                perc_missing = perc_missing)
+    out <- c(n_total = n_total,
+             n_missing = n_missing,
+             perc_missing = perc_missing)
     return(out)
 }
 
-# Get pvalue and any warning or error messages for pearson's chi-squared test
-pearson_p <- function(tab) {
-    out <- catch_conditions(chisq.test, tab)
+get_p <- function(x, y, fun, ...) {
+    out <- catch_conditions(fun, x, y, ...)
     if (!all(is.na(out[[1]]))) {
         out$result <- out$result$p.value
     }
     names(out) <- c("p", "warn", "err")
+    out <- list(nm = out)
+    names(out) <- deparse(substitute(fun))
     return(out)
 }
 
-# Get p-value and any warning or error messages for fisher's exact test
-fisher_p <- function(tab) {
-    out <- catch_conditions(fisher.test, tab)
-    if (!all(is.na(out[[1]]))) {
-        out$result <- out$result$p.value
-    }
-    names(out) <- c("p", "warn", "err")
-    return(out)
-}
 
 #' @export
 qc_missingness <-
-    function(cols,
-             data,
+    function(data,
+             cols,
              strata_col = NULL,
-             missing_vals = NULL,
-             format = TRUE, testing = TRUE) {
-
-        ##################################################
-        ##################################################
-        if (testing) print(paste0("Passed: Start initialializing results list"))
+             format = TRUE) {
 
         multiple_strata_exist <-
             !is.null(strata_col) && length(unique(data[, strata_col])) > 1
@@ -64,17 +39,7 @@ qc_missingness <-
         names(complete_res_list) <- cols
 
 
-        if (testing) print(paste0("Passed: End initialializing results list"))
-        ##################################################
-        ##################################################
-
-
         for (col in cols) {
-            ##################################################
-            ##################################################
-            if (testing) print(paste0("Passed: Start column loop"))
-
-            total_missing_idx <- mk_missing_idx(data[, col], missing_vals)
 
             # Create/reset placeholders for subgroups and hypothesis testing lists
             subgr_res_list <- NULL
@@ -82,13 +47,7 @@ qc_missingness <-
 
             # Calc perc missing for entire column
             total_res_list <-
-                list(total = n_perc_missing(total_missing_idx))
-
-            ##################################################
-            ##################################################
-            if (testing) print(paste0("Passed: Start strata conditional"))
-
-
+                list(total = n_perc_missing(data[, col]))
 
             # Calc perc missing for each subset of x indexed by
             # each unique value of y
@@ -100,67 +59,75 @@ qc_missingness <-
 
                 for (i in 1:length(strata)) {
                     stratum_idx <- which(data[, strata_col] == strata[i])
-                    stratum_missing_idx <-
-                        mk_missing_idx(data[, col][stratum_idx],
-                                                          missing_vals)
 
+                    # Calculate n and percent for subgroups
                     subgr_res_list[[i]] <-
-                        n_perc_missing(stratum_missing_idx)
+                        n_perc_missing(data[stratum_idx, col])
                 }
 
-                tab <- table(total_missing_idx, data[, strata_col])
-
-                hyp_test_list <- list(pearson = pearson_p(tab),
-                                      fisher = fisher_p(tab))
-
+                # Calculate results of hypothesis tests
+                hyp_test_list <- c(get_p(is.na(data[, col]),
+                                         data[, strata_col],
+                                         chisq.test),
+                                   get_p(is.na(data[, col]),
+                                         data[, strata_col],
+                                         fisher.test))
             }
-
-            if (testing) print(paste0("Passed: End strata conditional"))
-            ##################################################
-            ##################################################
             # Combine lists
             complete_res_list[[col]] <-
                 unlist(c(total_res_list, subgr_res_list, hyp_test_list))
 
-            if (testing) print(paste0("Passed: End column loop"))
-            ##################################################
-            ##################################################
         }
+
+        # Format into data.frame with appropriate column names ----------------
         col_names <- names(complete_res_list[[1]])
         out <- data.frame(matrix(unlist(complete_res_list),
                                  nrow = length(complete_res_list),
                                  byrow = TRUE),
                           stringsAsFactors = FALSE)
         colnames(out) <- col_names
-        out <- cbind(data.frame(Variable = cols, stringsAsFactors = FALSE),
+        out <- cbind(data.frame(Variable = cols,
+                                stringsAsFactors = FALSE),
                      out)
+
+        # Formatting for a more readable report ------------------------------
         if (format) {
             # Format percentages
             perc_idx <- grep("perc_missing$", colnames(out))
             for (i in perc_idx) {
                 out[, i] <- sprintf('%.1f', as.numeric(out[, i]))
             }
+            # Format p-values
             p_idx <- grep("\\.p$", colnames(out))
             for (i in p_idx) {
                 out[, i] <- sprintf('%.3f', as.numeric(out[, i]))
             }
-            suffixes <- gsub("\\.n_total$",
+            # Rename columns to something more compact and readable
+
+            # Get common prefixes for column names
+            prefixes <- gsub("\\.n_total$",
                              "",
                              grep("\\.n_total$", colnames(out), value = TRUE))
-            for (suffix in suffixes) {
+            for (prefix in prefixes) {
+                # Get location for appropriate "percent" and "n" columns
+                # for a given prefix
                 n_index <-
-                    which(colnames(out) == paste0(suffix, ".n_missing"))
+                    which(colnames(out) == paste0(prefix, ".n_missing"))
                 perc_index <-
-                    which(colnames(out) == paste0(suffix, ".perc_missing"))
+                    which(colnames(out) == paste0(prefix, ".perc_missing"))
+                # At the position of the appropriate "n" column, replace
+                # with a combined version of N and percent
                 out[, n_index] <- paste0(out[, n_index], "(",
                                          out[, perc_index], ")")
-                colnames(out)[n_index] <- paste0(suffix, ", Missing N(%)")
+                # Rename this column appropriately
+                colnames(out)[n_index] <- prefix
             }
             to_remove <- c("n_total", "perc_missing", "warn", "err")
             pattern <- paste(paste0("\\.", to_remove, "$"), collapse = "|")
             omit_idx <- grep(pattern, colnames(out))
             out <- out[, -omit_idx]
-        }
+            colnames(out)[1] <- "Missing_N(%)"
+        } # FINISH FORMATTING  -------------------------
         return(out)
     }
 
