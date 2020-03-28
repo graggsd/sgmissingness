@@ -41,11 +41,15 @@ fisher_p <- function(tab) {
 }
 
 #' @export
-test_missingness <-
+qc_missingness <-
     function(cols,
              data,
              strata_col = NULL,
-             missing_vals = NULL) {
+             missing_vals = NULL,
+             format = TRUE) {
+
+        multiple_strata_exist <-
+            !is.null(strata_col) && length(unique(data[, strata_col])) > 1
 
         # Initialize empty list to hold all results
         complete_res_list <- vector(mode = "list", length = length(cols))
@@ -65,7 +69,7 @@ test_missingness <-
 
             # Calc perc missing for each subset of x indexed by
             # each unique value of y
-            if (!is.null(strata_col) && length(unique(data[, strata_col])) > 1){
+            if (multiple_strata_exist){
                 strata <- sort(unique(data[, strata_col]))
                 subgr_res_list <-
                     vector(mode = "list", length = length(strata))
@@ -97,5 +101,34 @@ test_missingness <-
                                  byrow = TRUE),
                           stringsAsFactors = FALSE)
         colnames(out) <- col_names
+        out <- cbind(data.frame(Variable = cols, stringsAsFactors = FALSE),
+                     out)
+        if (format) {
+            # Format percentages
+            perc_idx <- grep("perc_missing$", colnames(out))
+            for (i in perc_idx) {
+                out[, i] <- sprintf('%.1f', as.numeric(out[, i]))
+            }
+            p_idx <- grep("\\.p$", colnames(out))
+            for (i in p_idx) {
+                out[, i] <- sprintf('%.3f', as.numeric(out[, i]))
+            }
+            suffixes <- gsub("\\.n_total$",
+                             "",
+                             grep("\\.n_total$", colnames(out), value = TRUE))
+            for (suffix in suffixes) {
+                n_index <-
+                    which(colnames(out) == paste0(suffix, ".n_missing"))
+                perc_index <-
+                    which(colnames(out) == paste0(suffix, ".perc_missing"))
+                out[, n_index] <- paste0(out[, n_index], "(",
+                                         out[, perc_index], ")")
+                colnames(out)[n_index] <- paste0(suffix, ", Missing N(%)")
+            }
+            to_remove <- c("n_total", "perc_missing", "warn", "err")
+            pattern <- paste(paste0("\\.", to_remove, "$"), collapse = "|")
+            omit_idx <- grep(pattern, colnames(out))
+            out <- out[, -omit_idx]
+        }
         return(out)
     }
