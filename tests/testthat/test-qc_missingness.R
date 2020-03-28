@@ -1,13 +1,12 @@
-
 # Create example data
 set.seed(1)
-n_row <- 100
+n_row <- 1000
 cell_vals <- 1:2
 x <- sample(cell_vals, n_row, replace = TRUE)
 y <- sample(cell_vals, n_row, replace = TRUE)
 z <- sample(cell_vals, n_row, replace = TRUE)
-n_missing_x <- 20
-n_missing_y <- 10
+n_missing_x <- 50
+n_missing_y <- 20
 x[sample(1:n_row, n_missing_x, replace = FALSE)] <- NA
 y[sample(1:n_row, n_missing_y, replace = FALSE)] <- NA
 test_dat <- data.frame(x = x, y = y, z = z, stringsAsFactors = FALSE)
@@ -54,15 +53,12 @@ test_that("counts percentages appropriately", {
 
 test_that("records p-values appropriately", {
     expect_equal(as.numeric(test_res[x_row_idx, 11]),
-                 chisq.test(test_dat$x, test_dat$z)$p.value)
+                 chisq.test(is.na(test_dat$x), test_dat$z)$p.value)
     expect_equal(as.numeric(test_res[y_row_idx, 11]),
-                 chisq.test(test_dat$y, test_dat$z)$p.value)
+                 chisq.test(is.na(test_dat$y), test_dat$z)$p.value)
 
     expect_equal(as.numeric(test_res[x_row_idx, 14]),
-                 fisher.test(test_dat$x, test_dat$z)$p.value)
+                 fisher.test(is.na(test_dat$x), test_dat$z)$p.value)
     expect_equal(as.numeric(test_res[y_row_idx, 14]),
-                 fisher.test(test_dat$y, test_dat$z)$p.value)
+                 fisher.test(is.na(test_dat$y), test_dat$z)$p.value)
 })
-
-
-

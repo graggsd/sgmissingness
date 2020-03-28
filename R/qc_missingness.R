@@ -27,7 +27,9 @@ n_perc_missing <- function(missing_idx) {
 # Get pvalue and any warning or error messages for pearson's chi-squared test
 pearson_p <- function(tab) {
     out <- catch_conditions(chisq.test, tab)
-    out$result <- out$result$p.value
+    if (!all(is.na(out[[1]]))) {
+        out$result <- out$result$p.value
+    }
     names(out) <- c("p", "warn", "err")
     return(out)
 }
@@ -35,7 +37,9 @@ pearson_p <- function(tab) {
 # Get p-value and any warning or error messages for fisher's exact test
 fisher_p <- function(tab) {
     out <- catch_conditions(fisher.test, tab)
-    out$result <- out$result$p.value
+    if (!all(is.na(out[[1]]))) {
+        out$result <- out$result$p.value
+    }
     names(out) <- c("p", "warn", "err")
     return(out)
 }
@@ -46,7 +50,11 @@ qc_missingness <-
              data,
              strata_col = NULL,
              missing_vals = NULL,
-             format = TRUE) {
+             format = TRUE, testing = TRUE) {
+
+        ##################################################
+        ##################################################
+        if (testing) print(paste0("Passed: Start initialializing results list"))
 
         multiple_strata_exist <-
             !is.null(strata_col) && length(unique(data[, strata_col])) > 1
@@ -55,17 +63,32 @@ qc_missingness <-
         complete_res_list <- vector(mode = "list", length = length(cols))
         names(complete_res_list) <- cols
 
+
+        if (testing) print(paste0("Passed: End initialializing results list"))
+        ##################################################
+        ##################################################
+
+
         for (col in cols) {
+            ##################################################
+            ##################################################
+            if (testing) print(paste0("Passed: Start column loop"))
+
+            total_missing_idx <- mk_missing_idx(data[, col], missing_vals)
+
             # Create/reset placeholders for subgroups and hypothesis testing lists
             subgr_res_list <- NULL
             hyp_test_list <- NULL
 
             # Calc perc missing for entire column
             total_res_list <-
-                list(total =
-                         n_perc_missing(
-                             mk_missing_idx(data[, col], missing_vals)
-                         ))
+                list(total = n_perc_missing(total_missing_idx))
+
+            ##################################################
+            ##################################################
+            if (testing) print(paste0("Passed: Start strata conditional"))
+
+
 
             # Calc perc missing for each subset of x indexed by
             # each unique value of y
@@ -77,23 +100,31 @@ qc_missingness <-
 
                 for (i in 1:length(strata)) {
                     stratum_idx <- which(data[, strata_col] == strata[i])
+                    stratum_missing_idx <-
+                        mk_missing_idx(data[, col][stratum_idx],
+                                                          missing_vals)
 
                     subgr_res_list[[i]] <-
-                        n_perc_missing(
-                            mk_missing_idx(data[, col][stratum_idx],
-                                           missing_vals)
-                        )
+                        n_perc_missing(stratum_missing_idx)
                 }
 
-                tab <- table(data[, col], data[, strata_col])
+                tab <- table(total_missing_idx, data[, strata_col])
 
                 hyp_test_list <- list(pearson = pearson_p(tab),
                                       fisher = fisher_p(tab))
 
             }
+
+            if (testing) print(paste0("Passed: End strata conditional"))
+            ##################################################
+            ##################################################
             # Combine lists
             complete_res_list[[col]] <-
                 unlist(c(total_res_list, subgr_res_list, hyp_test_list))
+
+            if (testing) print(paste0("Passed: End column loop"))
+            ##################################################
+            ##################################################
         }
         col_names <- names(complete_res_list[[1]])
         out <- data.frame(matrix(unlist(complete_res_list),
@@ -132,3 +163,4 @@ qc_missingness <-
         }
         return(out)
     }
+
